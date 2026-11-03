@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Diễn đàn Việt Nam</title>
+<style>
+:root{--bg:#f4f5f7;--surface:#ffffff;--text:#1b1f24;--muted:#6b7280;--line:#e2e5e9;--accent:#2f6fed;--accent-text:#ffffff;--mine:#e6efff;--danger:#d64545;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root{--bg:#14171b;--surface:#1e2228;--text:#eceff3;--muted:#98a1ad;--line:#2d333b;--accent:#5b92ff;--accent-text:#0b1220;--mine:#22314d;--danger:#ff7a7a;color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;flex-direction:column;max-width:820px;margin:0 auto}
+header{padding:12px 14px 0;background:var(--surface);border-bottom:1px solid var(--line)}
+.top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+h1{font-size:18px;margin:0}
+.me{background:none;border:1px solid var(--line);color:var(--muted);border-radius:999px;padding:4px 10px;font-size:13px;cursor:pointer}
+.tabs{display:flex;gap:6px;overflow-x:auto;padding:10px 0 8px;scrollbar-width:none}
+.tab{flex:none;border:1px solid var(--line);background:var(--bg);color:var(--text);border-radius:999px;padding:6px 14px;font-size:14px;cursor:pointer}
+.tab[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-text);font-weight:600}
+#status{font-size:13px;color:var(--muted);text-align:center;padding:6px}
+#status:empty{display:none}
+#list{flex:1;overflow-y:auto;padding:12px 12px 4px;display:flex;flex-direction:column;gap:10px}
+.empty{margin:auto;color:var(--muted);text-align:center;font-size:14px}
+.msg{display:flex;gap:8px;align-items:flex-start;max-width:92%}
+.msg.mine{align-self:flex-end;flex-direction:row-reverse}
+.av{flex:none;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:700;font-size:14px}
+.bub{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:7px 11px;min-width:0}
+.mine .bub{background:var(--mine)}
+.meta{font-size:12px;color:var(--muted);display:flex;gap:8px;align-items:center;margin-bottom:2px}
+.meta b{color:var(--text);font-size:13px}
+.txt{white-space:pre-wrap;overflow-wrap:anywhere}
+.del{background:none;border:none;color:var(--danger);font-size:12px;cursor:pointer;padding:0}
+form{display:flex;gap:8px;padding:10px 12px;background:var(--surface);border-top:1px solid var(--line)}
+textarea{flex:1;resize:none;max-height:120px;border:1px solid var(--line);border-radius:12px;padding:9px 12px;font:inherit;background:var(--bg);color:var(--text)}
+textarea:focus,input:focus{outline:2px solid var(--accent)}
+.send{border:none;background:var(--accent);color:var(--accent-text);border-radius:12px;padding:0 18px;font-weight:700;font-size:15px;cursor:pointer}
+.send:disabled,textarea:disabled{opacity:.5;cursor:not-allowed}
+#gate{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;place-items:center;padding:20px;z-index:20}
+#gate.on{display:grid}
+.card{background:var(--surface);border-radius:16px;padding:20px;width:100%;max-width:360px}
+.card h2{margin:0 0 6px;font-size:18px}
+.card p{margin:0 0 12px;color:var(--muted);font-size:14px}
+.card input{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:inherit;background:var(--bg);color:var(--text);margin-bottom:12px}
+.card .send{width:100%;padding:11px}
+</style>
+</head>
+<body>
+<header>
+  <div class="top"><h1>💬 Diễn đàn Việt Nam</h1><button class="me" id="meBtn" type="button">Đặt tên</button></div>
+  <div class="tabs" id="tabs" role="tablist"></div>
+</header>
+<div id="status">Đang kết nối…</div>
+<div id="list" aria-live="polite"></div>
+<form id="f">
+  <textarea id="t" rows="1" maxlength="1000" placeholder="Nhập tin nhắn…" disabled></textarea>
+  <button class="send" id="s" type="submit" disabled>Gửi</button>
+</form>
+<div id="gate"><div class="card">
+  <h2>Chào mừng bạn!</h2>
+  <p>Chọn một biệt danh để mọi người nhận ra bạn trong phòng chat.</p>
+  <input id="nameIn" maxlength="24" placeholder="Biệt danh của bạn" autocomplete="nickname">
+  <button class="send" id="nameOk" type="button">Vào chat</button>
+</div></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, collection, addDoc, deleteDoc, doc, query, where, orderBy, limit, onSnapshot, getDoc }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+// ====== DÁN CẤU HÌNH FIREBASE CỦA BẠN VÀO ĐÂY ======
+// Firebase console > Project settings > Your apps > Web app > SDK setup
+const firebaseConfig = {
+  apiKey: "AIzaSyA0zuSMKWhD3y9bWH4ZnqBWfI1czX0vCNQ",
+  authDomain: "diendan-chat-vn.firebaseapp.com",
+  projectId: "diendan-chat-vn",
+  appId: "1:246154254077:web:d4ddb54d7f871d649a1094"
+};
+// ===================================================
+
+const ROOMS=[["chung","Chung"],["hoi-dap","Hỏi đáp"],["giai-tri","Giải trí"],["cong-nghe","Công nghệ"]];
+const $=id=>document.getElementById(id);
+const app=initializeApp(firebaseConfig), auth=getAuth(app), db=getFirestore(app);
+let room="chung",nick="",uid="",isAdmin=false,unsub=null,timer=null;
+
+function ls(k,v){try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v)}catch(e){return null}}
+nick=ls("nick")||"";
+
+const setStatus=s=>$("status").textContent=s;
+function refreshComposer(){const ok=!!(uid&&nick);$("t").disabled=!ok;$("s").disabled=!ok;$("meBtn").textContent=nick||"Đặt tên"}
+
+function buildTabs(){
+  const box=$("tabs");box.innerHTML="";
+  ROOMS.forEach(([id,label])=>{
+    const b=document.createElement("button");b.type="button";b.className="tab";b.textContent="# "+label;
+    b.setAttribute("role","tab");b.setAttribute("aria-selected",String(id===room));
+    b.onclick=()=>{if(room===id)return;room=id;buildTabs();subscribe()};
+    box.appendChild(b);
+  });
+}
+
+function color(s){let h=0;for(const c of s)h=(h*31+c.charCodeAt(0))>>>0;return "hsl("+(h%360)+",55%,45%)"}
+function fmt(ts){
+  const d=new Date(ts),n=new Date(),hm=d.toLocaleTimeString("vi-VN",{hour:"2-digit",minute:"2-digit"});
+  return d.toDateString()===n.toDateString()?hm:d.toLocaleDateString("vi-VN",{day:"2-digit",month:"2-digit"})+" "+hm;
+}
+
+function render(snap){
+  const list=$("list");
+  const near=list.scrollHeight-list.scrollTop-list.clientHeight<120;
+  const docs=snap.docs.map(d=>({id:d.id,...d.data()})).reverse();
+  list.innerHTML="";
+  if(!docs.length){const e=document.createElement("div");e.className="empty";e.textContent="Chưa có tin nhắn nào. Hãy là người đầu tiên!";list.appendChild(e);return}
+  docs.forEach(m=>{
+    const mine=m.uid===uid;
+    const row=document.createElement("div");row.className="msg"+(mine?" mine":"");
+    const av=document.createElement("div");av.className="av";av.style.background=color(m.uid||m.nick||"?");
+    av.textContent=(m.nick||"?").trim().charAt(0).toUpperCase();
+    const bub=document.createElement("div");bub.className="bub";
+    const meta=document.createElement("div");meta.className="meta";
+    const b=document.createElement("b");b.textContent=m.nick||"Ẩn danh";
+    const tm=document.createElement("span");tm.textContent=fmt(m.ts||0);
+    meta.append(b,tm);
+    if(mine||isAdmin){
+      const x=document.createElement("button");x.className="del";x.type="button";x.textContent="Xóa";
+      x.onclick=()=>{if(confirm("Xóa tin nhắn này?"))deleteDoc(doc(db,"messages",m.id)).catch(()=>setStatus("Không xóa được tin nhắn."))};
+      meta.appendChild(x);
+    }
+    const tx=document.createElement("div");tx.className="txt";tx.textContent=m.text||"";
+    bub.append(meta,tx);row.append(av,bub);list.appendChild(row);
+  });
+  if(near||!list.dataset.init){list.scrollTop=list.scrollHeight;list.dataset.init="1"}
+}
+
+function subscribe(){
+  if(unsub){unsub();unsub=null}
+  clearTimeout(timer);
+  $("list").dataset.init="";
+  setStatus("Đang tải tin nhắn…");
+  timer=setTimeout(()=>setStatus("Chưa kết nối được, tin nhắn có thể chưa mới nhất."),10000);
+  const q=query(collection(db,"messages"),where("room","==",room),orderBy("ts","desc"),limit(100));
+  unsub=onSnapshot(q,
+    snap=>{clearTimeout(timer);setStatus("");render(snap)},
+    err=>{clearTimeout(timer);console.error(err);setStatus(err.code==="failed-precondition"?"Thiếu chỉ mục Firestore. Chạy: firebase deploy --only firestore:indexes":"Lỗi kết nối: "+err.code)}
+  );
+}
+
+async function send(){
+  const t=$("t"),text=t.value.trim();
+  if(!text||!uid||!nick)return;
+  t.value="";t.style.height="auto";
+  try{await addDoc(collection(db,"messages"),{room,nick,uid,text,ts:Date.now()})}
+  catch(e){t.value=text;setStatus("Không gửi được tin nhắn. Hãy thử lại.")}
+}
+
+$("f").addEventListener("submit",e=>{e.preventDefault();send()});
+$("t").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey&&!e.isComposing){e.preventDefault();send()}});
+$("t").addEventListener("input",e=>{const t=e.target;t.style.height="auto";t.style.height=Math.min(t.scrollHeight,120)+"px"});
+
+function askName(){$("gate").classList.add("on");$("nameIn").value=nick;$("nameIn").focus()}
+function saveName(){const v=$("nameIn").value.trim();if(!v)return;nick=v;ls("nick",v);$("gate").classList.remove("on");refreshComposer()}
+$("nameOk").onclick=saveName;
+$("nameIn").addEventListener("keydown",e=>{if(e.key==="Enter")saveName()});
+$("meBtn").onclick=askName;
+
+buildTabs();refreshComposer();
+if(!nick)askName();
+
+onAuthStateChanged(auth,async user=>{
+  if(!user){signInAnonymously(auth).catch(()=>setStatus("Không đăng nhập được. Hãy bật Anonymous trong Firebase Authentication."));return}
+  uid=user.uid;
+  try{isAdmin=(await getDoc(doc(db,"admins",uid))).exists()}catch(e){}
+  refreshComposer();subscribe();
+});
+</script>
+</body>
+</html>
